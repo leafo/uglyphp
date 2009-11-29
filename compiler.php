@@ -6,13 +6,6 @@
  * don't forget iterators and macros
  */
 
-$debug = "";
-function dump($n) {
-	global $debug;
-	$debug.= print_r($n, 1)."\n";
-}
-
-
 class Compiler {
 	public function variable($v) {
 		$out = "$$v[name]";
