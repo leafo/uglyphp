@@ -4,6 +4,7 @@
  * Compiles template into php code
  *
  * don't forget iterators and macros
+ * GET RID OF EXCEPTIONS
  */
 
 class Compiler {
@@ -67,7 +68,20 @@ class Parser {
 		$this->count--; // give back the starting character
 		$this->marks = array();
 
+		// dump(substr($this->buffer, $this->count));
+
 		switch($m[2]) {
+			case '$':
+				if ($this->variable($var))
+					echo $this->c->write($var);
+				else { // skip it
+					$this->count++;
+					echo '$';
+				}
+				break;
+
+
+			/*
 			case '$':
 				try {
 					$this->variable($var);
@@ -81,6 +95,8 @@ class Parser {
 					$this->block($b);
 					echo $this->c->block($b);
 				} catch (exception $e) { $this->count++; echo '{'; }
+
+			*/
 		}
 
 
@@ -255,44 +271,54 @@ class Parser {
 	// attempt to read variable
 	function variable(&$var) {
 		$var = array('chain' => array());
-		try {
-			$this->m()->literal('$')->keyword($var['name']);
-		} catch (exception $e) {
-			$this->reset();	
-			throw new exception('failed to find variable');
+
+		$this->m();
+		if (!$this->literal('$') or !$this->keyword($var['name'])) {
+			$this->reset();
+			return false;
 		}
 
 		while (true) {
-			try {
-				$this->m()->literal('.')->keyword($name);
+			$this->m();
+			if ($this->literal('.') and $this->keyword($name)) {
 				$var['chain'][] = array('type' =>'class', 'name' => $name);
 				continue;
-			} catch (exception $e) {
-				$this->reset();
-			}
+			} else $this->reset();
 
-			try {
-				$this->m()->literal('|')->keyword($name);
+			$this->m();
+			if ($this->literal('|') and $this->keyword($name)) {
 				$var['chain'][] = array('type' => 'array', 'name' => $name);
-			} catch (exception $e) {
-				$this->reset();
-				break;
-			}
+				continue;
+			} else $this->reset();
+
+			break;
 		}
 
 		$var = $this->c->variable($var);
-		return $this;
+		return true;
 	}
 	
 	// match a keyword
 	function keyword(&$word) {
-		if (!$this->match("([a-z_][\w]*)", $m)) 
-			throw new exception('failed to grab keyword');
+		if ($this->match("([a-z_][\w]*)", $m))  {
+			$word = $m[1];
+			return true;
+		}
 
-		$word = $m[1];
-		return $this;
+		return false;
 	}
 
+	function literal($what, $eatWhitespace = false) {
+		// shortcut on single letter
+		if ($eatWhitespace and strlen($what) == 1) {
+			if ($this->buffer{$this->count} == $what) return true;
+			else return false;
+		}
+
+		return $this->match($this->preg_quote($what), $m, $eatWhitespace);
+	}
+
+	/*
 	private function literal($what, $eatWhitespace = null) {
 		// if $what is one char we can speed things up
 		if ((!$eatWhitespace && strlen($what) == 1 && $this->count < strlen($this->buffer) && $what != $this->buffer{$this->count}) ||
@@ -303,6 +329,7 @@ class Parser {
 		}
 		return $this;
 	}
+	*/
 	
 	// try to match something on head of buffer
 	function match($regex, &$out, $eatWhitespace = null) {
