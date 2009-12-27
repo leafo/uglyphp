@@ -38,7 +38,7 @@ class Compiler {
 class Parser {
 	private $buffer; // the buffer never needs to change
 	private $marks = array();
-	private $count = 0; // temporary stack
+	private $count = 0; 
 	private $inBlock = false; // curently in block, controls eat_whitespace
 
 	// tag stack
@@ -58,11 +58,34 @@ class Parser {
 
 	// read text up until next variable or block
 	function text() {
-		if (!preg_match('/(.*?)(\$|\{)/is', $this->buffer, $m)) {
-			echo $this->buffer;
-			return false;
+		if (!$this->match('(.*?)(\$|\{)', $m)) {
+			echo substr($this->buffer, $this->count);
+			return true;  // all done
 		}
-		echo $this->advance(strlen($m[1]));
+		
+		echo $m[1];
+		$this->count--; // give back the starting character
+		$this->marks = array();
+
+		switch($m[2]) {
+			case '$':
+				try {
+					$this->variable($var);
+					echo $this->c->write($var);
+				} catch (exception $e) { 
+					$this->count++; echo '$'; 
+				}
+				break;
+			default:
+				try {
+					$this->block($b);
+					echo $this->c->block($b);
+				} catch (exception $e) { $this->count++; echo '{'; }
+		}
+
+
+		$this->text();
+		return true;
 
 		if ($this->buffer{0} == '$') {
 			try {
@@ -73,13 +96,27 @@ class Parser {
 				echo $this->advance(1); // skip the $ 
 			}
 		} else {
+			dump('found start of block');
+			dump($this->count);
+			dump($this->buffer);
+
+			try {
+				$this->literal('{');
+			} catch(exception $e) {
+				dump($e->getMessage());
+				return;
+			}
+
+			/*
 			try {
 				$this->m()->block($b)->advance();
 				echo $this->c->block($b);	
 			} catch (exception $e) {
 				$this->reset();
-				echo $this->advance(1); // skip the $ 
+				echo $this->advance(1); // skip the {
 			}
+			*/
+
 		}
 
 		$this->text();
@@ -218,12 +255,18 @@ class Parser {
 	// attempt to read variable
 	function variable(&$var) {
 		$var = array('chain' => array());
-		$this->literal('$')->keyword($var['name']);
+		try {
+			$this->m()->literal('$')->keyword($var['name']);
+		} catch (exception $e) {
+			$this->reset();	
+			throw new exception('failed to find variable');
+		}
 
 		while (true) {
 			try {
 				$this->m()->literal('.')->keyword($name);
 				$var['chain'][] = array('type' =>'class', 'name' => $name);
+				continue;
 			} catch (exception $e) {
 				$this->reset();
 			}
@@ -266,9 +309,9 @@ class Parser {
 		if ($eatWhitespace === null)
 			$eatWhitespace = $this->inBlock;	
 
-		$r = '/^.{'.$this->count.'}'.$regex.($eatWhitespace ? '\s*' : '').'/is';
-		if (preg_match($r, $this->buffer, $out)) {
-			$this->count = strlen($out[0]);
+		$r = '/'.$regex.($eatWhitespace ? '\s*' : '').'/Ais';
+		if (preg_match($r, $this->buffer, $out, null, $this->count)) {
+			$this->count += strlen($out[0]);
 			return true;
 		}
 		return false;
