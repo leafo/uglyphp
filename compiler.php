@@ -102,7 +102,10 @@ class Parser {
 		$this->inBlock = true;
 
 		// try a value
-		if ($this->expression($b)) goto pass;	
+		if ($this->args($a)) { 
+			$b = implode(',', $a);
+			goto pass;
+		}
 		
 		/*
 		if ($this->keyword($name) and $this->function($name, $func)) {
@@ -178,14 +181,17 @@ class Parser {
 	// consume argument list
 	function args(&$fargs) {
 		$args = array();
-		$this->expression($args[]);
-		try {
-			while (true) 
-				$this->m()->literal(',')->expression($args[]);
-		} catch (exception $ex) { $this->reset(); }
+		if (!$this->expression($args[])) return false;
+
+
+		$s = $this->seek();
+		while ($this->literal(',') and $this->expression($args[]))
+			$s = $this->seek();
+
+		$this->seek($s);
 
 		$fargs = $args;
-		return $this;
+		return true;
 	}
 
 	// expression operator expression ...
@@ -269,6 +275,7 @@ class Parser {
 
 		$var = $this->c->variable($var);
 		$this->inBlock = $inBlock;
+		if ($inBlock) $this->whitespace();
 		return true;
 	}
 	
@@ -310,6 +317,12 @@ class Parser {
 		}
 		return false;
 	}
+
+	function whitespace() {
+		$this->match('', $_, true);
+		return true;
+	}
+
 
 	private function preg_quote($what) {
 		return preg_quote($what, '/');
