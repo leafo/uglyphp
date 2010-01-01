@@ -101,18 +101,13 @@ class Parser {
 		if (!$this->literal('{')) return false;
 		$this->inBlock = true;
 
-		// try a value
-		if ($this->args($a)) { 
-			$b = implode(',', $a);
-			goto pass;
-		}
-		
-		/*
-		if ($this->keyword($name) and $this->function($name, $func)) {
-			// found a complete function			
-		}
-		*/
 
+		// try a value
+		if ($this->expression($b)) goto pass;
+		
+		// try a function
+		if ($this->keyword($name) and $this->func($name, $b)) goto pass;
+		
 		goto fail;
 
 		pass:
@@ -123,38 +118,13 @@ class Parser {
 		fail:
 		$this->seek($outside);
 		return false;
-
-
-/*
-			$this->m()->literal('{', true);
-			$this->inBlock = true;
-
-			// try all possible contents
-			// try a function
-			try {
-				$this->m()->keyword($name)->func($name, $out);
-
-				$b = $out;
-
-			} catch (exception $e) { 
-				$this->reset(); 
-				// else, it is an expression
-				$this->expression($b);	
-			}
-
-			$this->inBlock = false;
-			$this->literal('}');
-			return $this;
-		} catch (exception $ex) { $this->reset(); }
-
-		throw new exception('failed to capture block');
-*/
 	}
 	
 	function func($name, &$out) {
 		switch ($name) {
+			/*
 			case 'if':
-				$this->expression($exp);
+				if (!$this->expression($exp)) return false;
 				$out = $this->c->if_block($exp);
 				$this->push($name);
 				break;
@@ -170,12 +140,16 @@ class Parser {
 
 				$out = $this->c->end_block($this->pop());
 				break;
+			*/
 			default:
-				// no reserved words, must be special function
+				$args = array();	
 				$this->args($args);
+
 				$out = $this->c->funcall($name, $args);
 				break;
 		}
+		
+		return true;
 	}
 
 	// consume argument list
@@ -202,6 +176,7 @@ class Parser {
 			$left = '('.$left.')';
 		} else {
 			$this->seek($s);
+			dump('trying a value');
 			if (!$this->value($left)) return false;
 		}
 
@@ -233,7 +208,7 @@ class Parser {
 		if ($this->variable($v)) return true;
 
 		// match a number (keep it simple for now)
-		if ($this->match('(-?[0-9]*(\.[0-9]*)?)', $m)) {
+		if ($this->match('(-?[0-9]+(\.[0-9]*)?)', $m)) {
 			$v = $m[1];
 			return true;
 		}
@@ -322,7 +297,6 @@ class Parser {
 		$this->match('', $_, true);
 		return true;
 	}
-
 
 	private function preg_quote($what) {
 		return preg_quote($what, '/');
