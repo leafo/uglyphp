@@ -95,19 +95,31 @@ class Parser {
 	// a block is 
 	// { expression|funcall }
 	function block(&$b) {
-		$this->m();	
+		$outside = $this->seek();
+		$this->inBlock = true;
+
 		if (!$this->literal('{')) return false;
 		$this->inBlock = true;
 
-		// try a function
-		$this->m();	
+		// try a value
+		if ($this->expression($b)) goto pass;	
+		
+		/*
 		if ($this->keyword($name) and $this->function($name, $func)) {
 			// found a complete function			
-			
 		}
+		*/
 
+		goto fail;
 
-		return true;
+		pass:
+		dump("going to pass");
+		$this->inBlock = false;
+		if ($this->literal('}')) return true;
+
+		fail:
+		$this->seek($outside);
+		return false;
 
 
 /*
@@ -178,72 +190,64 @@ class Parser {
 
 	// expression operator expression ...
 	function expression(&$exp) {	
-		// try to find left
-		try {
-			$this->m()->literal('(')->expression($left)->literal(')');
+		// try to find left expression
+		$s = $this->seek();
+		if ($this->literal('(') and $this->expression($left) and $this->literal(')')) {
 			$left = '('.$left.')';
-		} catch (exception $e) { 
-			$this->reset(); 
-			// not wrapped in (), must be plain value
-			$this->value($left);
+		} else {
+			$this->seek($s);
+			if (!$this->value($left)) return false;
 		}
 
-		// see if there is a right
-		try {
-			$this->m()->operator($o)->expression($right);
-			$left = $left.$o.$right;
-		} catch (exception $e) { $this->reset(); }
+		$s = $this->seek();
+		if ($this->operator($o) and $this->expression($right)) {
+			$exp = $left.$o.$right;
+			return true;
+		}
 
+		$this->seek($s);
 		$exp = $left;
-		return $this;
+		return true;
 	}
 
 
 	function operator(&$o) {
 		if ($this->match('('.$this->operator_pattern.')', $m)) {
 			$o = $m[1];
-			return $this;
+			return true;
 		}
-
-		throw new exception('failed to find operator');
+		
+		return false;
 	}
 
 	// a value is..
 	// a variable, a number 
 	function value(&$v) {
 		// variable 
-		try { 
-			$this->variable($v);
-			return $this;
-		} catch (exception $e) { }
+		if ($this->variable($v)) return true;
 
 		// match a number (keep it simple for now)
 		if ($this->match('(-?[0-9]*(\.[0-9]*)?)', $m)) {
 			$v = $m[1];
-			return $this;
+			return true;
 		}
 
-		// STRINGS
-		/*
-		try {
-			$this->m('"')->pattern()
-		} catch (exception $e) {
-			
-		}
-		*/
+		// STRINGS GO HERE
 
-
-		throw new exception('failed to find value');
+		return false;
 	}
-
 
 	// attempt to read variable
 	function variable(&$var) {
 		$var = array('chain' => array());
 
+		$inBlock = $this->inBlock;
+		$this->inBlock = false;
+
 		$s = $this->seek();
 		if (!$this->literal('$') or !$this->keyword($var['name'])) {
 			$this->seek($s);
+			$this->inBlock = $inBlock;
 			return false;
 		}
 
@@ -264,6 +268,7 @@ class Parser {
 		}
 
 		$var = $this->c->variable($var);
+		$this->inBlock = $inBlock;
 		return true;
 	}
 	
@@ -277,10 +282,15 @@ class Parser {
 		return false;
 	}
 
-	function literal($what, $eatWhitespace = false) {
+	function literal($what, $eatWhitespace = null) {
+		if ($eatWhitespace === null) $eatWhitespace = $this->inBlock;	
+
 		// shortcut on single letter
-		if ($eatWhitespace and strlen($what) == 1) {
-			if ($this->buffer{$this->count} == $what) return true;
+		if (!$eatWhitespace and strlen($what) == 1) {
+			if ($this->buffer{$this->count} == $what) {
+				$this->count++;
+				return true;
+			}
 			else return false;
 		}
 
