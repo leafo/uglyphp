@@ -68,8 +68,6 @@ class Parser {
 		$this->count--; // give back the starting character
 		$this->marks = array();
 
-		// dump(substr($this->buffer, $this->count));
-
 		switch($m[2]) {
 			case '$':
 				if ($this->variable($var))
@@ -79,61 +77,16 @@ class Parser {
 					echo '$';
 				}
 				break;
-
-
-			/*
-			case '$':
-				try {
-					$this->variable($var);
-					echo $this->c->write($var);
-				} catch (exception $e) { 
-					$this->count++; echo '$'; 
-				}
-				break;
-			default:
-				try {
-					$this->block($b);
+			case '{':
+				if ($this->block($b)) {
 					echo $this->c->block($b);
-				} catch (exception $e) { $this->count++; echo '{'; }
-
-			*/
+				} else {
+					$this->count++;
+					echo '{';
+				}
+			break;
 		}
 
-
-		$this->text();
-		return true;
-
-		if ($this->buffer{0} == '$') {
-			try {
-				$this->m()->variable($var)->advance();
-				echo $this->c->write($var);
-			} catch (exception $e) { 
-				$this->reset(); 
-				echo $this->advance(1); // skip the $ 
-			}
-		} else {
-			dump('found start of block');
-			dump($this->count);
-			dump($this->buffer);
-
-			try {
-				$this->literal('{');
-			} catch(exception $e) {
-				dump($e->getMessage());
-				return;
-			}
-
-			/*
-			try {
-				$this->m()->block($b)->advance();
-				echo $this->c->block($b);	
-			} catch (exception $e) {
-				$this->reset();
-				echo $this->advance(1); // skip the {
-			}
-			*/
-
-		}
 
 		$this->text();
 		return true;
@@ -142,7 +95,22 @@ class Parser {
 	// a block is 
 	// { expression|funcall }
 	function block(&$b) {
-		try { 
+		$this->m();	
+		if (!$this->literal('{')) return false;
+		$this->inBlock = true;
+
+		// try a function
+		$this->m();	
+		if ($this->keyword($name) and $this->function($name, $func)) {
+			// found a complete function			
+			
+		}
+
+
+		return true;
+
+
+/*
 			$this->m()->literal('{', true);
 			$this->inBlock = true;
 
@@ -165,6 +133,7 @@ class Parser {
 		} catch (exception $ex) { $this->reset(); }
 
 		throw new exception('failed to capture block');
+*/
 	}
 	
 	function func($name, &$out) {
@@ -272,24 +241,24 @@ class Parser {
 	function variable(&$var) {
 		$var = array('chain' => array());
 
-		$this->m();
+		$s = $this->seek();
 		if (!$this->literal('$') or !$this->keyword($var['name'])) {
-			$this->reset();
+			$this->seek($s);
 			return false;
 		}
 
 		while (true) {
-			$this->m();
+			$ss = $this->seek();
 			if ($this->literal('.') and $this->keyword($name)) {
 				$var['chain'][] = array('type' =>'class', 'name' => $name);
 				continue;
-			} else $this->reset();
+			} else $this->seek($ss);
 
-			$this->m();
+			$ss = $this->seek();
 			if ($this->literal('|') and $this->keyword($name)) {
 				$var['chain'][] = array('type' => 'array', 'name' => $name);
 				continue;
-			} else $this->reset();
+			} else $this->seek($ss);
 
 			break;
 		}
@@ -318,18 +287,6 @@ class Parser {
 		return $this->match($this->preg_quote($what), $m, $eatWhitespace);
 	}
 
-	/*
-	private function literal($what, $eatWhitespace = null) {
-		// if $what is one char we can speed things up
-		if ((!$eatWhitespace && strlen($what) == 1 && $this->count < strlen($this->buffer) && $what != $this->buffer{$this->count}) ||
-			!$this->match($this->preg_quote($what), $m, $eatWhitespace))
-		{
-			throw new
-				Exception('failed to grab literal '.$what);
-		}
-		return $this;
-	}
-	*/
 	
 	// try to match something on head of buffer
 	function match($regex, &$out, $eatWhitespace = null) {
@@ -358,6 +315,12 @@ class Parser {
 	function reset() {
 		if (!empty($this->marks))
 			$this->count = array_pop($this->marks);
+	}
+
+	// seek to a spot in the buffer
+	function seek($where = null) {
+		if (!$where) return $this->count;
+		else $this->count = $where;
 	}
 
 	function advance($n = null) {
