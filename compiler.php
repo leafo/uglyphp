@@ -4,7 +4,6 @@
  * Compiles template into php code
  *
  * don't forget iterators and macros
- * GET RID OF EXCEPTIONS
  */
 
 class Compiler {
@@ -38,7 +37,6 @@ class Compiler {
 
 class Parser {
 	private $buffer; // the buffer never needs to change
-	private $marks = array();
 	private $count = 0; 
 	private $inBlock = false; // curently in block, controls eat_whitespace
 
@@ -87,7 +85,6 @@ class Parser {
 			break;
 		}
 
-
 		$this->text();
 		return true;
 	}
@@ -101,7 +98,6 @@ class Parser {
 		if (!$this->literal('{')) return false;
 		$this->inBlock = true;
 
-
 		// try a value
 		if ($this->expression($b)) goto pass;
 		
@@ -111,36 +107,33 @@ class Parser {
 		goto fail;
 
 		pass:
-		dump("going to pass");
 		$this->inBlock = false;
 		if ($this->literal('}')) return true;
 
 		fail:
+		$this->inBlock = false;
 		$this->seek($outside);
 		return false;
 	}
 	
 	function func($name, &$out) {
 		switch ($name) {
-			/*
 			case 'if':
 				if (!$this->expression($exp)) return false;
+
 				$out = $this->c->if_block($exp);
 				$this->push($name);
 				break;
 			case 'else':
-				if (count($this->stack) == 0)
-					throw new exception('unexpected else');
+				if (count($this->stack) == 0) return false;
 
 				$out = $this->c->else_block($this->peek());
 				break;
 			case 'end':
-				if (count($this->stack) == 0)
-					throw new exception('unexpected end');
+				if (count($this->stack) == 0) return false;
 
 				$out = $this->c->end_block($this->pop());
 				break;
-			*/
 			default:
 				$args = array();	
 				$this->args($args);
@@ -156,7 +149,6 @@ class Parser {
 	function args(&$fargs) {
 		$args = array();
 		if (!$this->expression($args[])) return false;
-
 
 		$s = $this->seek();
 		while ($this->literal(',') and $this->expression($args[]))
@@ -176,7 +168,6 @@ class Parser {
 			$left = '('.$left.')';
 		} else {
 			$this->seek($s);
-			dump('trying a value');
 			if (!$this->value($left)) return false;
 		}
 
@@ -302,33 +293,10 @@ class Parser {
 		return preg_quote($what, '/');
 	}
 
-	// write a mark
-	function m() {
-		$this->marks[] = $this->count;
-		return $this;
-	}
-
-	// pop mark off stack and set count
-	function reset() {
-		if (!empty($this->marks))
-			$this->count = array_pop($this->marks);
-	}
-
 	// seek to a spot in the buffer
 	function seek($where = null) {
 		if (!$where) return $this->count;
 		else $this->count = $where;
-	}
-
-	function advance($n = null) {
-		if (is_int($n)) $this->count += $n;
-
-		$eat = substr($this->buffer, 0, $this->count);
-		$this->buffer = substr($this->buffer, $this->count);
-		$this->count = 0;
-		$this->marks = array();
-
-		return $eat;
 	}
 
 	// remove all the comments
