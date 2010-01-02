@@ -21,6 +21,8 @@ class Compiler {
 	public function write($value) { return "<?php echo ".$value."; ?>"; }
 	public function block($b) { return "<< $b >>"; }
 	public function if_block($cond) { return 'if ('.$cond.') {'; }
+	public function capture_block() { return 'ob_start();'; }
+	public function capture_end_block($var) { return $var.' = ob_get_clean();'; }
 
 	public function else_block($tag = null) {
 		switch ($tag) {
@@ -122,7 +124,7 @@ class Parser {
 				if (!$this->expression($exp)) return false;
 
 				$out = $this->c->if_block($exp);
-				$this->push($name);
+				$this->push(array($name));
 				break;
 			case 'else':
 				if (count($this->stack) == 0) return false;
@@ -132,7 +134,19 @@ class Parser {
 			case 'end':
 				if (count($this->stack) == 0) return false;
 
-				$out = $this->c->end_block($this->pop());
+				$closing = $this->pop();
+				switch($closing[0]) {
+					case 'capture':
+						$out = $this->c->capture_end_block($closing[1]);
+						break;
+					default: 
+						$out = $this->c->end_block();
+				}
+				break;
+			case 'capture':
+				if (!$this->variable($var)) return false;
+				$out = $this->c->capture_block();
+				$this->push(array($name, $var));
 				break;
 			default:
 				$args = array();	
