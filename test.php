@@ -9,11 +9,13 @@ $c = new Parser();
 try {
 	$out = $c->parse($document)."\n";
 } catch (exception $e) {
+	echo $c->printLog();
 	echo chr(27)."[1;31mException:".chr(27)."[0m ".$e->getMessage()."\n";
 	exit();
 }
 
 
+/*
 $config = array( 
 	'clean' => true, 
 	'drop-proprietary-attributes' => true, 
@@ -25,6 +27,7 @@ $config = array(
 $tidy = new tidy;
 $tidy->parseString($out, $config, 'utf8');
 $tidy->cleanRepair();
+ */
 
 // Output
 echo "======================\n";
