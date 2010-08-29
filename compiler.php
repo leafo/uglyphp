@@ -225,13 +225,14 @@ class Parser {
 				'args' => array(),
 			);
 
+			$this->inBlock = $inBlock;
+
 			if ($this->macroOpenBody($delim)) {
 				$m->delim = $delim;
 			} elseif (!$this->literal('%')) {
 				break;
 			}
 
-			$this->inBlock = $inBlock;
 			return true;
 		}
 
@@ -755,7 +756,9 @@ class CompilerX {
 
 	public function done() {
 		$this->endCode();
-		return join($this->buffer[0]);
+		$out = join($this->buffer[0]);
+		$this->buffer = array(array());
+		return $out;
 	}
 
 	protected function enterCode() {
