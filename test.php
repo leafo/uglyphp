@@ -8,6 +8,7 @@ $c = new Parser();
 
 try {
 	$out = $c->parse($document)."\n";
+	$c->printLog();
 } catch (exception $e) {
 	echo $c->printLog();
 	echo chr(27)."[1;31mException:".chr(27)."[0m ".$e->getMessage()."\n";

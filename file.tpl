@@ -1,33 +1,18 @@
 
-%daddy = ($s) [[
-<div>
-	<h1>$s</h1>
-	What do you mean by this function? 
-	Ther is a reason why I did what I did but I don't know what it is yet... why oh why did I do
-	it like this? I don't know at all. But what do you think about this syntax?
 
-	$body
-	$hello
-	$s
-	$world
-
-</div>
-]]
-
-{*
-	this is a comment
-	that goes woops
-*}
-
-%mommy = [[
-	this is where this goes
+%dogdick = [[
+	hello world
 ]]
 
 
-%daddy [[
-	where does this go?
-]]
+this is a test of the compiler engine. Do you know anything about it?
+I didn't think so...
 
-%mommy
+$this|works.with|the.new|compiler
+
+another text phrase
+
+%dogdick%
+
 
 

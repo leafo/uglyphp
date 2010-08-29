@@ -7,9 +7,9 @@
  * if block fails then we need to unpush it
  */
 
-// the compiler should control the output, not the parser
-// the compiler should be smarter about what it is compiling (stronger types)
-// the compiler should not be aware of the parser at all (why is it now?)
+// [x] the compiler should control the output, not the parser
+// [ ] the compiler should be smarter about what it is compiling (stronger types)
+// [x] the compiler should not be aware of the parser at all (why is it now?)
 
 class Parser {
 	private $buffer; // the buffer never needs to change
@@ -20,20 +20,19 @@ class Parser {
 	private $macroStack = array(); 
 	private $expanding = null;
 
-	public $log = array();
-	public function log($msg) {
-		$this->log[] = print_r($msg, 1);
+	static public $log = array();
+	static public function log($msg) {
+		self::$log[] = print_r($msg, 1);
 	}
-
-	public function printLog() {
-		return implode(array_map(function($i) { 
+	static public function printLog() {
+		echo implode(array_map(function($i) { 
 			return '-- '.$i."\n";
-		}, $this->log));
+		}, self::$log));
 	}
 
 	public function __construct($compiler = null) {
-		$this->c = $compiler ? $compiler : new Compiler();
-		$this->c->parser = $this;
+		$this->c = $compiler ? $compiler : new CompilerX();
+		// $this->c->parser = $this; // don't need this
 
 		// don't forget unary ops
 		$this->operator_pattern = implode('|',
@@ -59,12 +58,12 @@ class Parser {
 		$inMacroDefine = $head && $head->type == 'macro-define';
 			
 		if (!$this->match('(.*?)(\{\*|\$|\{|%'.($macroDelim ? '|'.$macroDelim: '').')', $m, false)) {
-			echo substr($this->buffer, $this->count);
+			$this->c->text(substr($this->buffer, $this->count));
 			if ($inMacroDefine) while ($this->popMacro());
 			return true;  // all done
 		}
 		
-		echo $m[1];
+		$this->c->text($m[1]);
 		$token = $m[2];
 		$this->count -= strlen($token); // give back the starting character
 
@@ -75,7 +74,7 @@ class Parser {
 					$this->pushMacro($new);
 				} elseif ($this->macroExpansion($key)) {
 					if (is_null($key->delim))
-						echo $this->renderMacro($key);
+						$this->renderMacro($key);
 					else
 						$this->pushMacro($key);
 				} else {
@@ -98,11 +97,11 @@ class Parser {
 					if ($inMacroDefine && in_array($var['name'], $head->args)) {
 						$this->log('macro var: '.$var['name']);
 
-						$head->text[] = ob_get_clean();
+						$head->text[] = $this->c->popBuffer();
 						$head->text[] = $var;
-						ob_start();
+						$this->c->pushBuffer();
 					} else {
-						echo $this->c->write($this->c->variable($var));
+						$this->c->compileChunk($var);
 					}
 				} else { // skip it
 					$this->pass($token);
@@ -111,6 +110,7 @@ class Parser {
 			// expression/block
 			case '{':
 				if ($this->block($b)) {
+					/*
 					if ($inMacroDefine) {
 						$head->text[] = ob_get_clean();
 						$head->text[] = $b;
@@ -120,6 +120,7 @@ class Parser {
 						if (is_object($b)) echo $this->c->block($b);
 						elseif ($b) echo $this->c->write($b);
 					}
+					 */
 				} else { // skip
 					$this->pass($token);
 				}
@@ -148,6 +149,7 @@ class Parser {
 	}
 
 	// render a macro from macro-expand object
+	// should this be in the compiler?
 	public function renderMacro($key) {
 		if (!isset($this->macros[$key->name])) return '';
 		$macro = $this->macros[$key->name];
@@ -161,14 +163,8 @@ class Parser {
 			else break;
 		}
 
-		$this->log($key);
-
-
-		// $this->throwParseError(print_r($macro,1));
-
 		$e = $this->expanding;
 		$this->expanding = $key;
-		$out = '';
 		foreach ($macro->text as $chunk) {
 			if (is_array($chunk)) { // its a variable
 				$name = $chunk['name'];
@@ -177,27 +173,21 @@ class Parser {
 				$value = $key->args[$name];
 				// TODO: real type checking!!
 				if (is_array($value) && isset($value[0]) && $value[0] == 'string') {
-					$out .= $value[2];
+					$this->c->text($value[2]);
 				} elseif (is_array($value)) { // this is a value (variable, string)
-					$out .= $this->c->write($this->c->variable($this->mixVariables($value, $chunk)));
-				} elseif (is_object($value)) {
-					// this is a macro key
-					$out .= $this->renderMacro($value);
+					$this->c->compileChunk($this->mixVariables($value, $chunk));
+				} elseif (is_object($value)) { // a macro key
+					$this->renderMacro($value);
 				} else {
-					$out .= $value;	
+					$this->c->text($value);
 				}
-				// $out.= isset($key->args[$chunk[1]]) ? $key->args[$chunk[1]] : '';
 			} elseif (is_object($chunk)) {
-				// this is a block
-				// set $delay state
-				$out .= $this->c->block($chunk);
+				$this->throwParseError('got an object as chunk in expand macro');
 			} else {
-				$out.= $chunk;
+				$this->c->text($chunk);
 			}
 		}
 		$this->expanding = $e;
-
-		return $out;	
 	}
 
 	// get opening body of macro
@@ -309,7 +299,7 @@ class Parser {
 	// push a new macro on the stack
 	function pushMacro($macro) {
 		$this->macroStack[] = $macro;
-		ob_start();
+		$this->c->pushBuffer();
 	}
 
 	// pop a macro off the stack and insert into env
@@ -317,11 +307,11 @@ class Parser {
 		if (count($this->macroStack) == 0) return false;
 
 		$macro = array_pop($this->macroStack);
-		$content = ob_get_clean();
+		$content = $this->c->popBuffer();
 
 		if ($macro->type == 'macro-expand') {
 			$macro->raw_args[] = $content;
-			echo $this->renderMacro($macro);
+			$this->renderMacro($macro);
 		} else { // create new macro
 			$macro->text[] = $content;
 			$this->macros[$macro->name] = $macro;
@@ -330,8 +320,8 @@ class Parser {
 		return true;
 	}
 
+	// TODO: redo all this block stuff
 	public $blockStack = array();
-
 	// push a new block onto blockStack
 	function pushBlock($b) {
 		if (is_array($b)) $b = (object)$b;
@@ -702,14 +692,8 @@ class Parser {
 	function parse($str) {
 		$this->buffer = $this->clear_comments($str);
 		$this->count = 0;
-		ob_start();
 		$this->text();
-		$out = ob_get_clean();
-
-
-		echo $this->printLog();
-
-		return $out;
+		return $this->c->done();
 	}
 
 	function throwParseError($msg = 'parse error') {
@@ -718,6 +702,79 @@ class Parser {
 			throw new exception($msg.': failed at `'.$m[1].'` line: '.$line);
 	}
 }
+
+class CompilerX {
+	private $inCode = false;
+	private $buffer = array(array());
+
+	public function pushBuffer() {
+		$this->buffer[] = array();
+	}
+
+	public function popBuffer() {
+		$this->endCode();
+		if (count($this->buffer) > 1) 
+			return join(array_pop($this->buffer));
+		else return false;
+	}
+
+	public function compileChunk($c) {
+		switch(true) {
+			case is_array($c) && isset($c['chain']): // variable
+				$this->_echo($this->c_variable($c));
+				break;
+			default: 
+				$this->code('/* unknown compile chunk `'.print_r($c, 1).'`*/');
+		}
+	}
+
+	public function c_variable($v) {
+		$out = "$$v[name]";
+		foreach($v['chain'] as $a) {
+			if ($a['type'] == 'array')
+				$out .= "['".$a['name']."']";
+			else
+				$out .= "->".$a['name'];
+		}
+		return $out;
+	}
+
+	public function _echo($in) {
+		$this->code("echo $in;");
+	}
+
+	public function text($str) {
+		$this->endCode();
+		$this->write($str);
+	}
+
+	public function code($str) {
+		$this->enterCode();
+		$this->write($str);
+	}
+
+	public function done() {
+		$this->endCode();
+		return join($this->buffer[0]);
+	}
+
+	protected function enterCode() {
+		if ($this->inCode) return;
+		$this->write('<?php ');
+		$this->inCode = true;
+	}
+
+	protected function endCode() {
+		if (!$this->inCode) return;
+		$this->write(' ?>');
+		$this->inCode = false;
+	}
+
+	protected function write($str) {
+		$this->buffer[count($this->buffer) - 1][] = $str;
+	}
+}
+
 
 class Compiler {
 	public $parser = null;
@@ -794,7 +851,5 @@ class Compiler {
 		return ob_get_clean();
 	}
 }
-
-
 
 ?>
