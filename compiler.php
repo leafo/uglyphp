@@ -33,11 +33,6 @@ class Parser {
 		}, self::$log));
 	}
 
-	public function set(&$value) {
-		$value = 100;
-	}
-
-
 	public function __construct($compiler = null) {
 		$this->c = $compiler ? $compiler : new CompilerX();
 		// $this->c->parser = $this; // don't need this
