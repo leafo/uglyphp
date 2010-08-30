@@ -113,27 +113,16 @@ class Parser {
 			// expression/block
 			case '{':
 				// either a block, or just a value
+				$s = $this->seek();
 				if ($this->block($b)) {
 					if (!empty($b->expecting)) {
 						$this->pushBlock($b);
-					} else {
-						// $this->c->compileChunk($b);
 					}
-
-				/*
-				// what was I doing here?
-				if ($this->block($b)) {
-					if ($inMacroDefine) {
-						$head->text[] = ob_get_clean();
-						$head->text[] = $b;
-						ob_start();
-					} else {
-						// free to output directly
-						if (is_object($b)) echo $this->c->block($b);
-						elseif ($b) echo $this->c->write($b);
-					}
-				 */
+				} elseif ($this->start() && $this->expression($exp) && $this->end()) {
+					$this->c->compileChunk($exp);
 				} else { // skip
+					$this->seek($s);
+					$this->throwParseError();
 					$this->pass($token);
 				}
 			break;
@@ -620,9 +609,20 @@ class Parser {
 		return false;
 	}
 
+	function start() {
+		$ib = $this->inBlock;
+		$this->inBlock = true;
+		if ($this->literal('{')) return true;
+		$this->inBlock = $ib;
+		return false;
+	}
+
 	function end() {
-		$this->inBlock = false;	 // don't take whitespace
-		return $this->literal('}');
+		$ib = $this->inBlock;
+		$this->inBlock = false;
+		if ($this->literal('}')) return true;
+		$this->inBlock = $ib;
+		return false;
 	}
 
 	function literal($what, $eatWhitespace = null) {
@@ -729,8 +729,8 @@ class CompilerX {
 
 	public function compileChunk($c) {
 		switch(true) {
-			case is_array($c) && isset($c['chain']): // variable
-				$this->_echo($this->c_variable($c));
+			case is_array($c):
+				$this->_echo($this->c_expression($c));
 				break;
 			case is_object($c) && $c->type == 'block':
 				if (method_exists($this, 'block_'.$c->name)) {

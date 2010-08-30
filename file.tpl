@@ -17,5 +17,7 @@ beta
 	I really like this $post
 {end}
 
+{$variable.something|hello.world + 23}
+
 {* this is a comment *}
 
