@@ -11,11 +11,14 @@
 // [ ] the compiler should be smarter about what it is compiling (stronger types)
 // [x] the compiler should not be aware of the parser at all (why is it now?)
 
+// get rid of recursion in text()
+
 class Parser {
 	private $buffer; // the buffer never needs to change
 	private $count = 0; 
 	private $inBlock = false; // curently in block, controls eat_whitespace
 	private $macros = array();
+	private $blockStack = array();
 
 	private $macroStack = array(); 
 	private $expanding = null;
@@ -29,6 +32,11 @@ class Parser {
 			return '-- '.$i."\n";
 		}, self::$log));
 	}
+
+	public function set(&$value) {
+		$value = 100;
+	}
+
 
 	public function __construct($compiler = null) {
 		$this->c = $compiler ? $compiler : new CompilerX();
@@ -109,8 +117,17 @@ class Parser {
 				break;
 			// expression/block
 			case '{':
+				// either a block, or just a value
 				if ($this->block($b)) {
-					/*
+					if (!empty($b->expecting)) {
+						$this->pushBlock($b);
+					} else {
+						// $this->c->compileChunk($b);
+					}
+				
+				/*
+				// what was I doing here?
+				if ($this->block($b)) {
 					if ($inMacroDefine) {
 						$head->text[] = ob_get_clean();
 						$head->text[] = $b;
@@ -120,7 +137,7 @@ class Parser {
 						if (is_object($b)) echo $this->c->block($b);
 						elseif ($b) echo $this->c->write($b);
 					}
-					 */
+				 */
 				} else { // skip
 					$this->pass($token);
 				}
@@ -321,142 +338,115 @@ class Parser {
 		return true;
 	}
 
-	// TODO: redo all this block stuff
-	public $blockStack = array();
-	// push a new block onto blockStack
 	function pushBlock($b) {
 		if (is_array($b)) $b = (object)$b;
 		$this->log("Pushing $b->type");
 		$this->blockStack[] = $b;
+
+		if (is_array($b->expecting) && count($b->expecting) > 0) {
+			$this->c->pushBuffer();
+		}
 	}
 
 	function popBlock() {
-		return array_pop($this->blockStack);
+		$block = array_pop($this->blockStack);
+		if (!is_null($block) && is_array($block->expecting)) {
+			$block->capture = $this->c->popBuffer();
+		}
+		return $block;
 	}
 
-	function block_if() {
-		if (!$this->expression($exp)) return false;
-		$this->pushBlock(array(
-			'type' => 'if',
-			'exp' => $exp,
-			'case' => array(),
-			'children' => array(
-				'else' => function($self) {
-					$self->case[] = array($self->exp, ob_get_clean());
-					$self->exp = null;
-					unset($self->children['elseif']);
-					unset($self->children['else']);
-					ob_start();
-				},
-				'elseif' => function($self, $parser) {
-					$self->case[] = array($self->exp, ob_get_clean());
-					if (!$parser->expression($self->exp)) {
-						$parser->throwParseError('Failed to find elseif expression');
-					}
-					ob_start();
-				},
-				'end' => function($self) {
-					$self->case[] = array($self->exp, ob_get_clean());
-				}
-			)
-		));
-		ob_start();
-
-		return true;
+	// are we expecting specified block?
+	function expecting($blockName) {
+		$current = end($this->blockStack);
+		if (!empty($current) && is_array($current->expecting) && in_array($blockName, array_keys($current->expecting)))
+			return $current->expecting[$blockName];
+		else return false;
 	}
 
-	function block_capture() {
-		if (!$this->variable($vname)) return false;
-		$this->pushBlock(array(
-			'type' => 'capture',
-			'var' => $vname,
-			'children' => array(
-				'end' => function($self) {
-					$self->value = ob_get_clean();
-				}
-			)
-		));
-
-		ob_start();
-		return true;
+	function getExpectingFor($blockName) {
+		$expecting = array();
+		foreach (get_class_methods($this) as $method) {
+			if (preg_match('/^block_'.$blockName.'_(.+)$/', $method, $match)) {
+				$expecting[$match[1]] = $method;
+			}
+		}
+		return $expecting;
 	}
 
+	function block_if($block) {
+		if (!$this->expression($exp) || !$this->end()) return false;
+		$block->expecting = $this->getExpectingFor('if');
 
-	// a block is 
-	// { expression|funcall }
-	function block(&$outBlock) {
-		$outside = $this->seek();
+		$block->exp = array($exp);
+		$block->then = array();
+	}
+
+	function block_if_end($block) {
+		if (!$this->end()) return false;
+		$if = $this->popBlock();
+		$if->then[] = $if->capture;
+
+		print_r($if);
+		$this->c->compileChunk($if);
+	}
+
+	function block_if_else($block) {
+		if (!$this->end()) return false;
+		$if = $this->popBlock();
+		$if->then[] = $if->capture;
+
+		$if->expecting['else'] = null;
+		$if->expecting['elseif'] = null;
+
+		$this->pushBlock($if);
+	}
+
+	function block_if_elseif($block) {
+		if (!$this->expression($exp) || !$this->end()) return false;
+		$if = $this->popBlock();
+		$if->exp[] = $exp;
+		$if->then[] = $if->capture;
+
+		$this->pushBlock($if);
+	}
+
+	// what if I used magic methods to `wrap` functions to keep track of 
+	// $inBlock or the seek. 
+	function block(&$block) {
+		$block = null;
+
+		$s = $this->seek();
+		$inBlock = $this->inBlock;
 		$this->inBlock = true;
 
-		if (!$this->literal('{')) return false;
-		$this->inBlock = true;
-
-		// try a value
-		if ($this->expression($outBlock)) {
-			// $this->throwParseError('found expression');
-			goto pass;
-		}
-
-		if (!$this->keyword($func)) goto fail;
-
-		/*
-		// see if there is anything in block stack we need to take care of
-		$foundChild = false;
-		$outBlock = null;
-		for ($i = count($this->blockStack) - 1; $i >= 0; $i--) {
-			$b = $this->blockStack[$i];
-			if (isset($b->children)) {
-				foreach ($b->children as $tag=>$action) {
-					if ($func == $tag) {
-						// $this->throwParseError("found $tag");
-						$this->log("Calling `$tag` for `$b->type`");
-						call_user_func($action, $b, $this);
-						$foundChild = true;
-						break;
-					}
+		if ($this->literal('{') && $this->keyword($word)) {
+			$block = (object)array(
+				'type' => 'block',
+				'name' => $word,
+			);
+			
+			if (in_array($word, $this->builtins) || $response = $this->expecting($word)) {
+				$func = empty($response) ? 'block_'.$word : $response;
+				if (call_user_func(array($this, $func), $block) !== false) {
+					$this->inBlock = $inBlock;
+					return true;
+				}
+			} else { // a function call
+				$this->log("non-builtin block: `$word`");
+				if (!$this->args($args)) $args = null;
+				$block->args = $args;
+				if ($this->literal('}')) {
+					$this->inBlock = $inBlock;
+					return true;
 				}
 			}
-			// should this be done here?
-			if ($func == 'end' && $foundChild) {
-				$outBlock = $this->popBlock();
-				$this->log("Popping $b->type");
-			}
 
-			if ($foundChild) goto pass;
 		}
 
-
-		$b = null;
-		foreach ($this->builtins as $bname) {
-			if ($bname == $func) {
-				$bfunc = 'block_'.$bname;
-				if ($b = $this->$bfunc()) {
-					if (is_object($b)) $outBlock = $b;
-					goto pass;
-				}
-			}
-		}
-		*/
-
-		// just a normal function?
-		$this->log("Unknown `$func`");
-		$this->args($args);
-
-		$outBlock = (object)array(
-			'type' => 'function',
-			'func' => $func,
-			'args' => is_array($args) ? $args : array()
-		);
-		goto pass;
-
-		goto fail;
-		pass:
-		$this->inBlock = false;
-		if ($this->literal('}')) return true;
-
-		fail:
-		$this->inBlock = false;
-		$this->seek($outside);
+		$block = null;
+		$this->seek($s);
+		$this->inBlock = $inBlock;
 		return false;
 	}
 
@@ -501,12 +491,13 @@ class Parser {
 
 		$s = $this->seek();
 		if ($this->operator($o) and $this->expression($right)) {
-			$exp = $left.$o.$right;
+			$exp = array('op', $o, $left, $right);
 			return true;
 		}
 
 		$this->seek($s);
 		$exp = $left;
+
 		return true;
 	}
 
@@ -617,6 +608,11 @@ class Parser {
 		return false;
 	}
 
+	function end() {
+		$this->inBlock = false;	 // don't take whitespace
+		return $this->literal('}');
+	}
+
 	function literal($what, $eatWhitespace = null) {
 		if ($eatWhitespace === null) $eatWhitespace = $this->inBlock;	
 		if ($this->count >= strlen($this->buffer)) return false; // prevent notice
@@ -635,7 +631,7 @@ class Parser {
 
 	// pass $str from being parsed
 	function pass($str) {
-		echo $str;
+		$this->c->text($str);
 		$this->count += strlen($str);
 	}
 
@@ -724,12 +720,33 @@ class CompilerX {
 			case is_array($c) && isset($c['chain']): // variable
 				$this->_echo($this->c_variable($c));
 				break;
+			case is_object($c) && $c->type == 'block':
+				if (method_exists($this, 'block_'.$c->name)) {
+					$this->{'block_'.$c->name}($c);
+					break;
+				}
 			default: 
 				$this->code('/* unknown compile chunk `'.print_r($c, 1).'`*/');
 		}
 	}
 
-	public function c_variable($v) {
+	public function block_if($block) {
+		$exps = $block->exp;
+		$first = true;
+		foreach ($block->then as $then) {
+			$exp = array_shift($exps);
+			if (!is_null($exp)) {
+				$this->code(($first ? 'if' : 'elseif').' ('.$this->c_expression($exp).'):');
+				$first = false;
+			} else {
+				$this->code('else:');
+			}
+			$this->text($then);
+		}
+		$this->code('endif;');
+	}
+
+	public function c_variable(array $v) {
 		$out = "$$v[name]";
 		foreach($v['chain'] as $a) {
 			if ($a['type'] == 'array')
@@ -738,6 +755,16 @@ class CompilerX {
 				$out .= "->".$a['name'];
 		}
 		return $out;
+	}
+
+	public function c_expression(array $v) {
+		if (!empty($v['chain'])) return $this->c_variable($v);
+		switch($v[0]) {
+			case 'op':
+				return $this->c_expression($v[2]).' '.$v[1].' '.$this->c_expression($v[3]);
+			default:
+				return $v[1];
+		}
 	}
 
 	public function _echo($in) {
@@ -780,40 +807,8 @@ class CompilerX {
 
 
 class Compiler {
-	public $parser = null;
 
-	public function variable($v) {
-		$out = "$$v[name]";
-		foreach($v['chain'] as $a) {
-			if ($a['type'] == 'array')
-				$out .= "['".$a['name']."']";
-			else
-				$out .= "->".$a['name'];
-		}
-		return $out;
-	}
-
-	public function write($value) { return "<?php echo ".$value."; ?>"; }
-	// public function code($text) { return '<?php '.$text.' ? >'; }	
-	public function code($text) { return ' ['.$text.'] '; }	
-	
-	public function block($b) {
-		switch ($b->type) {
-		case 'capture':
-			return $this->code('ob_start();').$b->value.
-				$this->code($b->var.' = ob_get_clean();');
-		case 'if':
-			// return $this->code('if ('.$b->exp.') { ').$b->onTrue.$this->code('}');
-			return $this->if_statement($b);
-		case 'function':
-			return $this->funcall($b->func, $b->args);
-
-		}
-
-		return "<<$b->type block>>";
-	}
-
-	// value type
+	// need to reintegrate subVariable for macro
 	public function value($v) {
 		if (isset($v['chain'])) {
 			// find out if we need to mix the variable
@@ -827,32 +822,6 @@ class Compiler {
 		}
 	}
 
-	public function funcall($name, $args) {
-		// return print_r($args, 1);
-		// return $this->write($name.'('.implode(', ',$args).')');
-		return $this->write($name.'('.implode(', ', array_map(array($this, 'value'), $args)).')');
-	}
-
-	public function if_statement($b) {
-		ob_start();
-		$first = true;
-		foreach ($b->case as $case) {
-			if ($first) {
-				$first = false;
-				echo $this->code('if ('.$case[0].') {');
-			} else {
-				if ($case[0]) { // elseif
-					echo $this->code('} elseif ('.$case[0].') {');
-				} else {
-					echo $this->code('} else {');
-				}
-			}
-			echo $case[1];
-		}
-		echo $this->code('}');
-
-		return ob_get_clean();
-	}
 }
 
 ?>
