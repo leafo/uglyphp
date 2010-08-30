@@ -13,6 +13,13 @@ alpha
 {end}
 beta
 
+{literal}
+	This is some very literal text that I am writing right here.....
+	{if $something}
+		what is $going on here
+	{else}
+{end}
+
 {foreach $posts as $post}
 	I really like this $post
 {end}

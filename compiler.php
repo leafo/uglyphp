@@ -122,7 +122,6 @@ class Parser {
 					$this->c->compileChunk($exp);
 				} else { // skip
 					$this->seek($s);
-					$this->throwParseError();
 					$this->pass($token);
 				}
 			break;
@@ -358,6 +357,12 @@ class Parser {
 		return $expecting;
 	}
 
+	function block_literal($block) {
+		if (!$this->end()) return false;
+		$this->to('{end}', $capture);
+		$this->c->text($capture);
+	}
+
 	function block_foreach($block) {
 		$success = $this->variable($from) &&
 			$this->literal('as') &&
@@ -435,12 +440,14 @@ class Parser {
 				}
 			} else { // a function call
 				$this->log("non-builtin block: `$word`");
+				/*
 				if (!$this->args($args)) $args = null;
 				$block->args = $args;
 				if ($this->literal('}')) {
 					$this->inBlock = $inBlock;
 					return true;
 				}
+				 */
 			}
 
 		}
@@ -734,7 +741,7 @@ class CompilerX {
 				break;
 			case is_object($c) && $c->type == 'block':
 				if (method_exists($this, 'block_'.$c->name)) {
-					Parser::log($c);
+					// Parser::log($c);
 					$this->{'block_'.$c->name}($c);
 					break;
 				}
@@ -765,7 +772,7 @@ class CompilerX {
 
 		$this->code('foreach ('.$from.' as '.$to.'):');
 		$this->text($block->capture);
-		$this->code('endforach;');
+		$this->code('endforeach;');
 	}
 
 	public function c_variable(array $v) {
