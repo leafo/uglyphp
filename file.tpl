@@ -1,6 +1,6 @@
 
-* blocks
 * investigate nested macros
+* variable prefix
 * importing
 
 alpha
@@ -22,6 +22,8 @@ beta
 {for $key,$value in $list}
 	Here is the $key and the $value.
 {end}
+
+{* add else to for *}
 
 {$variable.something|hello.world + 23}
 

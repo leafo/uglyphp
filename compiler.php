@@ -8,7 +8,7 @@
  */
 
 // [x] the compiler should control the output, not the parser
-// [ ] the compiler should be smarter about what it is compiling (stronger types)
+// [x] the compiler should be smarter about what it is compiling (stronger types)
 // [x] the compiler should not be aware of the parser at all (why is it now?)
 
 // get rid of recursion in text()
@@ -729,6 +729,11 @@ class Parser {
 class CompilerX {
 	private $inCode = false;
 	private $buffer = array(array());
+	private $scope = null;
+
+	public function __construct($scope = '$this') {
+		if (!is_null($scope)) $this->scope = $scope;
+	}
 
 	public function pushBuffer() {
 		$this->buffer[] = array();
@@ -784,7 +789,7 @@ class CompilerX {
 	}
 
 	public function c_variable(array $v) {
-		$out = "$$v[name]";
+		$out = (!empty($this->scope) ? $this->scope.'->' : '$')."$v[name]";
 		foreach($v['chain'] as $a) {
 			if ($a['type'] == 'array')
 				$out .= "['".$a['name']."']";
@@ -842,6 +847,74 @@ class CompilerX {
 	}
 }
 
+// wraps objects and arrays providing the same interface to access named data
+// doesn't let underlying object change
+class AccessProxy implements ArrayAccess {
+	private $__data;
+	private $__isArray = false;
+
+	public function __construct($data) {
+		$this->__isArray = is_array($data);
+		$this->__data = $data;
+	}
+
+	public function __get($key) {
+		if ($this->__isArray && isset($this->__data[$key])) {
+			return $this->wrap($this->__data[$key]);
+		} elseif (isset($this->__data->{$key})) {
+			return $this->wrap($this->__data->{$key});
+		} else return null;
+	}
+
+	public function wrap($what) {
+		if (is_object($what) || is_array($what)) return new self($what);
+		return $what;
+	}
+
+	public function offsetGet($key) {
+		return $this->{$key};
+	}
+
+	public function offsetSet($key, $value) {
+		if (is_null($key)) trigger_error('Cannot append to '.get_class($this), E_USER_ERROR);
+		$this->{$key} = $value;
+	}
+
+	public function offsetExists($key) {
+		return isset($this->__data[$key]) || isset($this->{$key});
+	}
+
+	public function offsetUnset($key) {
+		unset($this->{$key});
+	}
+}
+
+class Templater {
+	protected $compileDir;
+	protected $srcDir;
+	protected $parser = null;
+
+	public function __construct($srcDir = 'templates/', $compileDir = 'compiled/') {
+		$this->compileDir = $compileDir;
+		$this->srcDir = $srcDir;
+	}
+
+	public function render($name, $env) {
+		$src = $this->srcDir.$name.'.tpl';
+		$dest = $this->compileDir.$name.'.tpl.php';
+
+		if (!is_file($dest) || filemtime($src) > filemtime($dest)) {
+			$p = new Parser(new CompilerX('$env'));
+			file_put_contents($dest, $p->parse(file_get_contents($src)));
+		}
+
+		$this->run($dest, $env);
+	}
+
+	protected function run($fname, $env) {
+		require($fname);
+	}
+}
 
 class Compiler {
 
