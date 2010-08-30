@@ -13,15 +13,14 @@ alpha
 {end}
 beta
 
-{literal}
-	This is some very literal text that I am writing right here.....
-	{if $something}
-		what is $going on here
-	{else}
+{literal}this is $literal{end}
+
+{for $post in $posts}
+	I really like this $post
 {end}
 
-{foreach $posts as $post}
-	I really like this $post
+{for $key,$value in $list}
+	Here is the $key and the $value.
 {end}
 
 {$variable.something|hello.world + 23}

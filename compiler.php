@@ -359,24 +359,30 @@ class Parser {
 
 	function block_literal($block) {
 		if (!$this->end()) return false;
-		$this->to('{end}', $capture);
+		$this->to('{end}', $capture, false, true, false);
 		$this->c->text($capture);
 	}
 
-	function block_foreach($block) {
-		$success = $this->variable($from) &&
-			$this->literal('as') &&
-			$this->variable($to) &&
+	function block_for($block) {
+		$success = $this->variable($left) &&
+			($this->literal(',') && $this->variable($right) || true) && 
+			$this->literal('in') &&
+			$this->variable($from) &&
 			$this->end();
 		if (!$success) return false;
 
-		$block->expecting = $this->getExpectingFor('foreach');
+		$block->expecting = $this->getExpectingFor('for');
 
 		$block->from = $from;
-		$block->to = $to;
+		if (!empty($right)) {
+			$block->key = $left;
+			$block->to = $right;
+		} else {
+			$block->to = $left;
+		}
 	}
 
-	function block_foreach_end($block) {
+	function block_for_end($block) {
 		if (!$this->end()) return false;
 		$this->c->compileChunk($this->popBlock());
 	}
@@ -664,9 +670,10 @@ class Parser {
 
 	// advance counter to next occurrence of $what
 	// $until - don't include $what in advance
-	function to($what, &$out, $until = false, $allowNewline = true) {
+	function to($what, &$out, $until = false, $allowNewline = true, $eatWhitespace = null) {
 		$validChars = $allowNewline ? '.' : "[^\n]";
-		if (!$this->match('('.$validChars.'*?)'.$this->preg_quote($what), $m, !$until)) return false;
+		if (!$this->match('('.$validChars.'*?)'.$this->preg_quote($what),
+			$m, $eatWhitespace !== null ? $eatWhitespace : !$until)) return false;
 		if ($until) $this->count -= strlen($what); // give back $what
 		$out = $m[1];
 		return true;
@@ -766,9 +773,10 @@ class CompilerX {
 		$this->code('endif;');
 	}
 
-	public function block_foreach($block) {
+	public function block_for($block) {
 		$from = $this->c_expression($block->from);
 		$to = $this->c_expression($block->to);
+		if (isset($block->key)) $to = $this->c_expression($block->key).'=>'.$to;
 
 		$this->code('foreach ('.$from.' as '.$to.'):');
 		$this->text($block->capture);
