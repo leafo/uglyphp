@@ -15,12 +15,12 @@
 
 class Parser {
 	private $buffer; // the buffer never needs to change
-	private $count = 0; 
+	private $count = 0;
 	private $inBlock = false; // curently in block, controls eat_whitespace
 	private $macros = array();
 	private $blockStack = array();
 
-	private $macroStack = array(); 
+	private $macroStack = array();
 	private $expanding = null;
 
 	static public $log = array();
@@ -28,7 +28,7 @@ class Parser {
 		self::$log[] = print_r($msg, 1);
 	}
 	static public function printLog() {
-		echo implode(array_map(function($i) { 
+		echo implode(array_map(function($i) {
 			return '-- '.$i."\n";
 		}, self::$log));
 	}
@@ -39,8 +39,8 @@ class Parser {
 
 		// don't forget unary ops
 		$this->operator_pattern = implode('|',
-			array_map(array($this, 'preg_quote'), 
-			array('+', '-', '/', '%', '==', 	
+			array_map(array($this, 'preg_quote'),
+			array('+', '-', '/', '%', '==',
 				'===', '<', '<=', '>', '>=')));
 
 		$this->builtins = array();
@@ -59,13 +59,13 @@ class Parser {
 		} else $macroDelim = false;
 
 		$inMacroDefine = $head && $head->type == 'macro-define';
-			
+
 		if (!$this->match('(.*?)(\{\*|\$|\{|%'.($macroDelim ? '|'.$macroDelim: '').')', $m, false)) {
 			$this->c->text(substr($this->buffer, $this->count));
 			if ($inMacroDefine) while ($this->popMacro());
 			return true;  // all done
 		}
-		
+
 		$this->c->text($m[1]);
 		$token = $m[2];
 		$this->count -= strlen($token); // give back the starting character
@@ -85,7 +85,7 @@ class Parser {
 				}
 				break;
 			// ending macro
-			case $macroDelim: 
+			case $macroDelim:
 				$this->popMacro();
 				$this->count += strlen($token);
 				break;
@@ -119,7 +119,7 @@ class Parser {
 					} else {
 						// $this->c->compileChunk($b);
 					}
-				
+
 				/*
 				// what was I doing here?
 				if ($this->block($b)) {
@@ -369,6 +369,24 @@ class Parser {
 		return $expecting;
 	}
 
+	function block_foreach($block) {
+		$success = $this->variable($from) &&
+			$this->literal('as') &&
+			$this->variable($to) &&
+			$this->end();
+		if (!$success) return false;
+
+		$block->expecting = $this->getExpectingFor('foreach');
+
+		$block->from = $from;
+		$block->to = $to;
+	}
+
+	function block_foreach_end($block) {
+		if (!$this->end()) return false;
+		$this->c->compileChunk($this->popBlock());
+	}
+
 	function block_if($block) {
 		if (!$this->expression($exp) || !$this->end()) return false;
 		$block->expecting = $this->getExpectingFor('if');
@@ -382,7 +400,6 @@ class Parser {
 		$if = $this->popBlock();
 		$if->then[] = $if->capture;
 
-		print_r($if);
 		$this->c->compileChunk($if);
 	}
 
@@ -406,8 +423,8 @@ class Parser {
 		$this->pushBlock($if);
 	}
 
-	// what if I used magic methods to `wrap` functions to keep track of 
-	// $inBlock or the seek. 
+	// what if I used magic methods to `wrap` functions to keep track of
+	// $inBlock or the seek.
 	function block(&$block) {
 		$block = null;
 
@@ -420,7 +437,7 @@ class Parser {
 				'type' => 'block',
 				'name' => $word,
 			);
-			
+
 			if (in_array($word, $this->builtins) || $response = $this->expecting($word)) {
 				$func = empty($response) ? 'block_'.$word : $response;
 				if (call_user_func(array($this, $func), $block) !== false) {
@@ -474,7 +491,7 @@ class Parser {
 
 	// expression operator expression ...
 	// this ruins any native types..
-	function expression(&$exp) {	
+	function expression(&$exp) {
 		// try to find left expression
 		$s = $this->seek();
 		if ($this->literal('(') and $this->expression($left) and $this->literal(')')) {
@@ -501,14 +518,14 @@ class Parser {
 			$o = $m[1];
 			return true;
 		}
-		
+
 		return false;
 	}
 
 	// a value is..
-	// a variable, a number 
+	// a variable, a number
 	function value(&$v) {
-		// variable 
+		// variable
 		if ($this->variable($v)) return true;
 
 		// match a number (keep it simple for now)
@@ -588,7 +605,7 @@ class Parser {
 			$this->seek($s);
 			return false;
 		}
-		
+
 		$d = $delim;
 		return true;
 	}
@@ -609,7 +626,7 @@ class Parser {
 	}
 
 	function literal($what, $eatWhitespace = null) {
-		if ($eatWhitespace === null) $eatWhitespace = $this->inBlock;	
+		if ($eatWhitespace === null) $eatWhitespace = $this->inBlock;
 		if ($this->count >= strlen($this->buffer)) return false; // prevent notice
 
 		// shortcut on single letter
@@ -634,7 +651,7 @@ class Parser {
 	function peek($regex, &$out = null) {
 		$r = '/'.$regex.'/Ais';
 		$result =  preg_match($r, $this->buffer, $out, null, $this->count);
-		
+
 		return $result;
 	}
 
@@ -651,7 +668,7 @@ class Parser {
 	// try to match something on head of buffer
 	function match($regex, &$out, $eatWhitespace = null, $mods = '') {
 		if ($eatWhitespace === null)
-			$eatWhitespace = $this->inBlock;	
+			$eatWhitespace = $this->inBlock;
 
 		$r = '/'.$regex.($eatWhitespace ? '\s*' : '').'/Ais'.$mods;
 		if (preg_match($r, $this->buffer, $out, null, $this->count)) {
@@ -705,7 +722,7 @@ class CompilerX {
 
 	public function popBuffer() {
 		$this->endCode();
-		if (count($this->buffer) > 1) 
+		if (count($this->buffer) > 1)
 			return join(array_pop($this->buffer));
 		else return false;
 	}
@@ -717,10 +734,11 @@ class CompilerX {
 				break;
 			case is_object($c) && $c->type == 'block':
 				if (method_exists($this, 'block_'.$c->name)) {
+					Parser::log($c);
 					$this->{'block_'.$c->name}($c);
 					break;
 				}
-			default: 
+			default:
 				$this->code('/* unknown compile chunk `'.print_r($c, 1).'`*/');
 		}
 	}
@@ -741,6 +759,15 @@ class CompilerX {
 		$this->code('endif;');
 	}
 
+	public function block_foreach($block) {
+		$from = $this->c_expression($block->from);
+		$to = $this->c_expression($block->to);
+
+		$this->code('foreach ('.$from.' as '.$to.'):');
+		$this->text($block->capture);
+		$this->code('endforach;');
+	}
+
 	public function c_variable(array $v) {
 		$out = "$$v[name]";
 		foreach($v['chain'] as $a) {
@@ -753,7 +780,7 @@ class CompilerX {
 	}
 
 	public function c_expression(array $v) {
-		if (!empty($v['chain'])) return $this->c_variable($v);
+		if (isset($v['chain'])) return $this->c_variable($v);
 		switch($v[0]) {
 			case 'op':
 				return $this->c_expression($v[2]).' '.$v[1].' '.$this->c_expression($v[3]);

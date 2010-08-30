@@ -13,5 +13,9 @@ alpha
 {end}
 beta
 
+{foreach $posts as $post}
+	I really like this $post
+{end}
+
 {* this is a comment *}
 
