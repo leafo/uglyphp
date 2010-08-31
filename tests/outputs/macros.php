@@ -42,7 +42,7 @@ How are you doing?
 			<h2>Footer</h2>
 		</div>
 		<p>
-		ignored this: "who <strong>goes</strong> there" here is some junk: }}}}}} ]  [[  }   } 
+		ignored this: "who <strong>goes</strong> there" here is some junk: }}}}}} ]  [[ { } %{  }% 
 	</p>
 	</div>
 

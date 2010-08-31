@@ -3,6 +3,8 @@
 * variable prefix
 * importing
 
+%father = {hello world this is the father}%
+
 alpha
 {if $hello.world == 4}
 	Where is this data?. Well, looks like it is $here
@@ -13,6 +15,8 @@ alpha
 {end}
 beta
 
+%father%
+
 {literal}this is $literal{end}
 
 {for $post in $posts}
@@ -22,6 +26,8 @@ beta
 {for $key,$value in $list}
 	Here is the $key and the $value.
 {end}
+
+%father%
 
 {* add else to for *}
 

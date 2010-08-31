@@ -14,6 +14,7 @@
 // get rid of recursion in text()
 
 class Parser {
+	private $c = null; // this compiler
 	private $buffer; // the buffer never needs to change
 	private $count = 0;
 	private $inBlock = false; // curently in block, controls eat_whitespace
@@ -22,6 +23,9 @@ class Parser {
 
 	private $macroStack = array();
 	private $expanding = null;
+
+	private $operator_pattern;
+	private $builtins;
 
 	static public $log = array();
 	static public function log($msg) {
@@ -168,7 +172,6 @@ class Parser {
 		foreach ($macro->text as $chunk) {
 			if (is_array($chunk)) { // its a variable
 				$name = $chunk['name'];
-				$this->log("checking $name");
 				if (!isset($key->args[$name])) continue;
 				$value = $key->args[$name];
 				// TODO: real type checking!!
@@ -623,19 +626,11 @@ class Parser {
 	}
 
 	function start() {
-		$ib = $this->inBlock;
-		$this->inBlock = true;
-		if ($this->literal('{')) return true;
-		$this->inBlock = $ib;
-		return false;
+		return $this->literal('{', true);
 	}
 
 	function end() {
-		$ib = $this->inBlock;
-		$this->inBlock = false;
-		if ($this->literal('}')) return true;
-		$this->inBlock = $ib;
-		return false;
+		return $this->literal('}', false);
 	}
 
 	function literal($what, $eatWhitespace = null) {
@@ -731,7 +726,7 @@ class CompilerX {
 	private $buffer = array(array());
 	private $scope = null;
 
-	public function __construct($scope = '$this') {
+	public function __construct($scope = null) {
 		if (!is_null($scope)) $this->scope = $scope;
 	}
 

@@ -1,7 +1,8 @@
 <?php
 
 require 'compiler.php';
-$document = file_get_contents('file.tpl');
+$input = isset($argv[1]) ? $argv[1] : 'file.tpl';
+$document = file_get_contents($input);
 //print_r($document);
 //$c = new Parser(new JSCompiler('env'));
 $c = new Parser();
