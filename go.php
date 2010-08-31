@@ -5,7 +5,7 @@ $input = isset($argv[1]) ? $argv[1] : 'file.tpl';
 $document = file_get_contents($input);
 //print_r($document);
 //$c = new Parser(new JSCompiler('env'));
-$c = new Parser();
+$c = new Parser(new CompilerX('$this'));
 
 try {
 	$out = $c->parse($document)."\n";

@@ -31,7 +31,15 @@ beta
 
 {* add else to for *}
 
-{$variable.something|hello.world + 23}
+{$variable.something[hello].world + 23}
 
 {* this is a comment *}
+
+{$variable|filter}
+$variable|filter
+
+This is the first arg-filter: $variable|filter("hello world","test")
+This $variable|filter(1,2,3) will have a filter with it
+
+
 

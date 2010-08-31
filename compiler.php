@@ -244,7 +244,7 @@ class Parser {
 		return false;
 	}
 
-	// get rid of type information for literal values
+	// TODO use the compiler to compress these
 	public function flattenArguments($args) {
 		$out = array();
 		foreach ($args as $v) {
@@ -473,7 +473,7 @@ class Parser {
 		if (!$this->expression($args[])) return false;
 
 		$s = $this->seek();
-		while ($this->literal(',') and $this->expression($args[]))
+		while ($this->literal(',', true) && $this->expression($args[]))
 			$s = $this->seek();
 
 		$this->seek($s);
@@ -499,7 +499,7 @@ class Parser {
 	function expression(&$exp) {
 		// try to find left expression
 		$s = $this->seek();
-		if ($this->literal('(') and $this->expression($left) and $this->literal(')')) {
+		if ($this->literal('(') && $this->expression($left) && $this->literal(')')) {
 			$left = '('.$left.')';
 		} else {
 			$this->seek($s);
@@ -507,7 +507,7 @@ class Parser {
 		}
 
 		$s = $this->seek();
-		if ($this->operator($o) and $this->expression($right)) {
+		if ($this->operator($o) && $this->expression($right)) {
 			$exp = array('op', $o, $left, $right);
 			return true;
 		}
@@ -571,19 +571,32 @@ class Parser {
 		if (!$simple)
 		while (true) {
 			$ss = $this->seek();
-			if ($this->literal('.') and $this->keyword($name)) {
+			if ($this->literal('.') && $this->keyword($name)) {
 				$var['chain'][] = array('type' =>'class', 'name' => $name);
 				continue;
 			} else $this->seek($ss);
 
 			$ss = $this->seek();
-			if ($this->literal('|') and $this->keyword($name)) {
+			if ($this->literal('[') && $this->keyword($name) && $this->literal(']')) {
 				$var['chain'][] = array('type' => 'array', 'name' => $name);
 				continue;
 			} else $this->seek($ss);
 
 			break;
 		}
+
+		// check for a filter
+		$ss = $this->seek();
+		if ($this->literal('|') && $this->keyword($filter)) {
+			$this->log("filter: $filter");
+			$var['filter'] = array('name' => $filter);
+			// check for arguments
+			$ss = $this->seek();
+			if ($this->literal('(', true) && $this->args($args) && $this->literal(')')) {
+				$var['filter']['args'] = $args;
+			} else $this->seek($ss);
+		} else $this->seek($ss);
+
 
 		// if this is a macro argument then mix it with argument
 		if (($head = end($this->macroStack)) && $head->type == 'macro-define' && in_array($var['name'], $head->args)) {
@@ -791,6 +804,14 @@ class CompilerX {
 			else
 				$out .= "->".$a['name'];
 		}
+
+		if (isset($v['filter'])) {
+			$args = isset($v['filter']['args']) ?
+				array_map(array($this, 'c_expression'), $v['filter']['args']) : array();
+			array_unshift($args, $out);
+			$out = (!empty($this->scope) ? $this->scope.'->' : '').$v['filter']['name'].'('.join(',',$args).')';
+		}
+
 		return $out;
 	}
 
@@ -799,6 +820,8 @@ class CompilerX {
 		switch($v[0]) {
 			case 'op':
 				return $this->c_expression($v[2]).' '.$v[1].' '.$this->c_expression($v[3]);
+			case 'string':
+				return $v[1].$v[2].$v[1];
 			default:
 				return $v[1];
 		}
@@ -912,7 +935,6 @@ class Templater {
 }
 
 class Compiler {
-
 	// need to reintegrate subVariable for macro
 	public function value($v) {
 		if (isset($v['chain'])) {
