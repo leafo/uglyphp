@@ -41,5 +41,10 @@ $variable|filter
 This is the first arg-filter: $variable|filter("hello world","test")
 This $variable|filter(1,2,3) will have a filter with it
 
+this is a function: {link "test", "three"}
 
+function goes here: 
+{func 1,2,3} 
+
+test
 

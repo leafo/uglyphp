@@ -121,6 +121,8 @@ class Parser {
 				if ($this->block($b)) {
 					if (!empty($b->expecting)) {
 						$this->pushBlock($b);
+					} elseif ($b->type == 'function') {
+						$this->c->compileChunk($b);
 					}
 				} elseif ($this->start() && $this->expression($exp) && $this->end()) {
 					$this->c->compileChunk($exp);
@@ -444,21 +446,20 @@ class Parser {
 			if (in_array($word, $this->builtins) || $response = $this->expecting($word)) {
 				$func = empty($response) ? 'block_'.$word : $response;
 				if (call_user_func(array($this, $func), $block) !== false) {
+					if (empty($block->expecting)) $block = null;
 					$this->inBlock = $inBlock;
 					return true;
 				}
 			} else { // a function call
 				$this->log("non-builtin block: `$word`");
-				/*
 				if (!$this->args($args)) $args = null;
 				$block->args = $args;
-				if ($this->literal('}')) {
+				if ($this->literal('}', false)) {
+					$block->type = 'function';
 					$this->inBlock = $inBlock;
 					return true;
 				}
-				 */
 			}
-
 		}
 
 		$block = null;
@@ -755,16 +756,20 @@ class CompilerX {
 	}
 
 	public function compileChunk($c) {
+
 		switch(true) {
 			case is_array($c):
 				$this->_echo($this->c_expression($c));
 				break;
 			case is_object($c) && $c->type == 'block':
 				if (method_exists($this, 'block_'.$c->name)) {
-					// Parser::log($c);
 					$this->{'block_'.$c->name}($c);
 					break;
 				}
+			case is_object($c) && $c->type == 'function':
+				$args = isset($c->args) ? $this->c_args($c->args) : array();
+				$this->_echo((!empty($this->scope) ? $this->scope.'->' : '').$c->name.'('.join(',', $args).')');
+				break;
 			default:
 				$this->code('/* unknown compile chunk `'.print_r($c, 1).'`*/');
 		}
@@ -776,7 +781,12 @@ class CompilerX {
 		foreach ($block->then as $then) {
 			$exp = array_shift($exps);
 			if (!is_null($exp)) {
-				$this->code(($first ? 'if' : 'elseif').' ('.$this->c_expression($exp).'):');
+				$clause = $this->c_expression($exp);
+				if (isset($exp['chain'])) {
+					$clause = "isset($clause) && $clause";
+				}
+
+				$this->code(($first ? 'if' : 'elseif').' ('.$clause.'):');
 				$first = false;
 			} else {
 				$this->code('else:');
@@ -813,6 +823,10 @@ class CompilerX {
 		}
 
 		return $out;
+	}
+
+	public function c_args(array $args) {
+		return array_map(array($this, 'c_expression'), $args);
 	}
 
 	public function c_expression(array $v) {
