@@ -121,6 +121,7 @@ class Parser {
 				if ($this->block($b)) {
 					if (!empty($b->expecting)) {
 						$this->pushBlock($b);
+					// todo non blocks need to be compiled too, ignore ends
 					} elseif ($b->type == 'function') {
 						$this->c->compileChunk($b);
 					}
@@ -446,7 +447,6 @@ class Parser {
 			if (in_array($word, $this->builtins) || $response = $this->expecting($word)) {
 				$func = empty($response) ? 'block_'.$word : $response;
 				if (call_user_func(array($this, $func), $block) !== false) {
-					if (empty($block->expecting)) $block = null;
 					$this->inBlock = $inBlock;
 					return true;
 				}
@@ -926,6 +926,8 @@ class Templater {
 	protected $srcDir;
 	protected $parser = null;
 
+	public $proxy = false;
+
 	public function __construct($srcDir = 'templates/', $compileDir = 'compiled/') {
 		$this->compileDir = $compileDir;
 		$this->srcDir = $srcDir;
@@ -944,6 +946,7 @@ class Templater {
 	}
 
 	protected function run($fname, $env) {
+		if ($this->proxy) $env = new AccessProxy($env);
 		require($fname);
 	}
 }

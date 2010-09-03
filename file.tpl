@@ -31,7 +31,7 @@ beta
 
 {* add else to for *}
 
-{$variable.something[hello].world + 23}
+{$variable.something[hello].world + 12}
 
 {* this is a comment *}
 
