@@ -7,14 +7,14 @@
  * if block fails then we need to unpush it
  */
 
-// [x] the compiler should control the output, not the parser
-// [x] the compiler should be smarter about what it is compiling (stronger types)
-// [x] the compiler should not be aware of the parser at all (why is it now?)
+
+// textual include of files
 
 // get rid of recursion in text()
 
 class Parser {
 	private $c = null; // this compiler
+	private $loader; 
 	private $buffer; // the buffer never needs to change
 	private $count = 0;
 	private $inBlock = false; // curently in block, controls eat_whitespace
@@ -37,8 +37,9 @@ class Parser {
 		}, self::$log));
 	}
 
-	public function __construct($compiler = null) {
+	public function __construct($compiler = null, $loader = null) {
 		$this->c = $compiler ? $compiler : new CompilerX();
+		$this->loader = $loader;
 		// $this->c->parser = $this; // don't need this
 
 		// don't forget unary ops
@@ -782,9 +783,11 @@ class CompilerX {
 			$exp = array_shift($exps);
 			if (!is_null($exp)) {
 				$clause = $this->c_expression($exp);
+				/* // this doesn't work for __get
 				if (isset($exp['chain'])) {
 					$clause = "isset($clause) && $clause";
 				}
+				 */
 
 				$this->code(($first ? 'if' : 'elseif').' ('.$clause.'):');
 				$first = false;
@@ -945,27 +948,16 @@ class Templater {
 		$this->run($dest, $env);
 	}
 
+	// used by parser to load included files
+	// returns the realpath of the file
+	public function load($name) {
+		
+	}
+
 	protected function run($fname, $env) {
 		if ($this->proxy) $env = new AccessProxy($env);
 		require($fname);
 	}
-}
-
-class Compiler {
-	// need to reintegrate subVariable for macro
-	public function value($v) {
-		if (isset($v['chain'])) {
-			// find out if we need to mix the variable
-			$v = $this->parser->subVariable($v);
-			return $this->variable($v);
-		} else {
-			switch ($v[0]) {
-			case 'string':
-				return $v[1].$v[2].$v[1];
-			}
-		}
-	}
-
 }
 
 ?>
