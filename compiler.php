@@ -21,7 +21,7 @@ class Parser {
 	private $macros = array();
 	private $blockStack = array();
 
-	private $to_parse = array();
+	private $toParse = array();
 
 	private $macroStack = array();
 	private $expanding = null;
@@ -69,24 +69,23 @@ class Parser {
 	}
 
 	// run a file, return output
-	public function parse($name) {
+	public function parse($root) {
 		$this->macros = array();
 		$this->blockStack = array();
 
-		$fname = $this->loader->getFile($name);
-		if ($fname === false) throw new exception("Failed to find template: $name");
 		$this->precedence = 0;
+		$this->toParse = array_merge(array($root), $this->defaultWrappers);
+		while ($tpl_name = array_shift($this->toParse)) {
+			$fname = $this->loader->getFile($tpl_name);
+			if ($fname === false)
+				throw new exception("Failed to find template: $tpl_name");
 
-		$this->to_parse = array_merge(array($fname), $this->defaultWrappers);
-		while ($file = array_shift($this->to_parse)) {
-			$this->log("running $file");
-			if (!is_file($file)) throw new exception("Failed to find template: $file");
-			$content = $this->parseText(file_get_contents($file));
-			if (count($this->to_parse) == 0) {
+			$content = $this->parseText(file_get_contents($fname));
+			if (count($this->toParse) == 0) {
 				$out = $content;
 			} else {
 				$this->macros['__content'] = (object)array(
-					'name' => $file.'::__content',
+					'name' => $tpl_name.'::__content',
 					'args' => array(),
 					'text' => array($content)
 				);
@@ -207,7 +206,7 @@ class Parser {
 	public function macro_extends($key) {
 		$wrapper = $this->loader->getFile($key->raw_args[0]);
 		if ($wrapper === false) throw new exception("failed to find template $key->raw_args[0]");
-		$this->to_parse[] = $wrapper;
+		$this->toParse[] = $wrapper;
 	}
 
 	// render a macro from macro-expand object
@@ -1004,12 +1003,17 @@ class Templater {
 	protected $compileDir;
 	protected $srcDir;
 	protected $parser = null;
+	protected $wrappers = null;
 
 	public $proxy = false;
 
 	public function __construct($srcDir = 'templates/', $compileDir = 'compiled/') {
 		$this->compileDir = $compileDir;
 		$this->srcDir = $srcDir;
+	}
+
+	public function setWrapper($tpl_name = null) {
+		$this->wrappers = (array)$tpl_name;
 	}
 
 	public function render($name, $env) {
@@ -1019,8 +1023,11 @@ class Templater {
 
 		if (!is_file($dest) || filemtime($src) > filemtime($dest)) {
 			$p = new Parser(new CompilerX('$env'), $this);
+			if (!is_null($this->wrappers)) {
+				$p->defaultWrappers = $this->wrappers;
+			}
 			// $p->run('hello');
-			file_put_contents($dest, $p->parse(file_get_contents($src)));
+			file_put_contents($dest, $p->parse($name));
 		}
 
 		$this->run($dest, $env);
