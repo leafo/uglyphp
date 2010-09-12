@@ -20,7 +20,14 @@ $output = array(
 
 $prefix = realpath(dirname(__FILE__));
 require $prefix.'/../compiler.php';
-$compiler = new Parser();
+
+class SimpleLoader {
+	public function getFile($name) {
+		return $name;
+	}
+}
+
+$compiler = new Parser(null, new SimpleLoader());
 
 $fa = 'Fatal Error: ';
 if (php_sapi_name() != 'cli') { 
@@ -89,7 +96,7 @@ foreach ($tests as $test) {
 
 	try {
 		ob_start();
-		$parsed = trim($compiler->parse(file_get_contents($test['in'])));
+		$parsed = trim($compiler->parse($test['in']));
 		ob_end_clean();
 	} catch (exception $e) {
 		dump(array(

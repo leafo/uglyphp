@@ -21,11 +21,16 @@ class Parser {
 	private $macros = array();
 	private $blockStack = array();
 
+	private $to_parse = array();
+
 	private $macroStack = array();
 	private $expanding = null;
 
 	private $operator_pattern;
 	private $builtins;
+	private $builtin_macros;
+
+	private $precedence; // the current file's definition precedence
 
 	static public $log = array();
 	static public function log($msg) {
@@ -38,9 +43,8 @@ class Parser {
 	}
 
 	public function __construct($compiler = null, $loader = null) {
-		$this->c = $compiler ? $compiler : new CompilerX();
-		$this->loader = $loader;
-		// $this->c->parser = $this; // don't need this
+		$this->c = is_null($compiler) ? new CompilerX() : $compiler;
+		$this->loader = is_null($loader) ? new Templater() : $loader;
 
 		// don't forget unary ops
 		$this->operator_pattern = implode('|',
@@ -49,12 +53,54 @@ class Parser {
 				'===', '<', '<=', '>', '>=')));
 
 		$this->builtins = array();
+		$this->builtin_macros = array();
 		$methods = get_class_methods($this);
 		foreach ($methods as $m) {
 			if (preg_match('/^block_(\w+)$/', $m, $match)) {
 				$this->builtins[] = $match[1];
+				continue;
 			}
+
+			if (preg_match('/^macro_(\w+)$/', $m, $match))
+				$this->builtin_macros[] = $match[1];
 		}
+	}
+
+	// run a file, return output
+	public function parse($name) {
+		$this->macros = array();
+		$this->blockStack = array();
+
+		$fname = $this->loader->getFile($name);
+		if ($fname === false) throw new exception("Failed to find template: $name");
+		$this->precedence = 0;
+
+		$this->to_parse = array($fname);
+		while ($file = array_shift($this->to_parse)) {
+			$this->log("running $file");
+			if (!is_file($file)) throw new exception("Failed to find template: $file");
+			$content = $this->parseText(file_get_contents($file));
+			if (count($this->to_parse) == 0) {
+				$out = $content;
+			} else {
+				$this->macros['__content'] = (object)array(
+					'name' => $file.'::__content',
+					'args' => array(),
+					'text' => array($content)
+				);
+			}
+			$this->precedence++;
+		}
+
+		return $out;
+	}
+
+	function parseText($str) {
+		$this->c->prepare();
+		$this->buffer = $this->clear_comments($str);
+		$this->count = 0;
+		$this->text();
+		return $this->c->done();
 	}
 
 	// read text up until next variable or block
@@ -156,10 +202,22 @@ class Parser {
 		);
 	}
 
+	public function macro_extends($key) {
+		$wrapper = $this->loader->getFile($key->raw_args[0]);
+		if ($wrapper === false) throw new exception("failed to find template $key->raw_args[0]");
+		$this->to_parse[] = $wrapper;
+	}
+
 	// render a macro from macro-expand object
 	// should this be in the compiler?
 	public function renderMacro($key) {
-		if (!isset($this->macros[$key->name])) return '';
+		if (!isset($this->macros[$key->name])) {
+			if (in_array($key->name, $this->builtin_macros)) {
+				$this->{'macro_'.$key->name}($key);
+			}
+			return;
+		}
+
 		$macro = $this->macros[$key->name];
 		$this->log("rendering macro `$macro->name`");
 
@@ -171,6 +229,7 @@ class Parser {
 			else break;
 		}
 
+		// output the chunks of the macros content
 		$e = $this->expanding;
 		$this->expanding = $key;
 		foreach ($macro->text as $chunk) {
@@ -322,9 +381,24 @@ class Parser {
 			$this->renderMacro($macro);
 		} else { // create new macro
 			$macro->text[] = $content;
-			$this->macros[$macro->name] = $macro;
+			$this->defineMacro($macro);
 		}
 
+		return true;
+	}
+
+	function defineMacro($name, $macro = null) {
+		if (is_null($macro)) {
+			$macro = $name;
+			$name = $macro->name;
+		}	
+
+		$macro->precedence = $this->precedence;
+		if (isset($this->macros[$name]) && isset($this->macros[$name]->precedence)) {
+			if ($this->precedence > $this->macros[$name]->precedence)
+				return false;
+		}
+		$this->macros[$name] = $macro;
 		return true;
 	}
 
@@ -722,13 +796,6 @@ class Parser {
 		return preg_replace('/^\s*\/\/.*(\n|$)/m', '', $str);
 	}
 
-	function parse($str) {
-		$this->buffer = $this->clear_comments($str);
-		$this->count = 0;
-		$this->text();
-		return $this->c->done();
-	}
-
 	function throwParseError($msg = 'parse error') {
 		$line = 1 + substr_count(substr($this->buffer, 0, $this->count), "\n");
 		if ($this->peek("(.*?)(\n|$)", $m))
@@ -738,11 +805,25 @@ class Parser {
 
 class CompilerX {
 	private $inCode = false;
-	private $buffer = array(array());
-	private $scope = null;
+	private $buffer;
+	private $scope;
 
 	public function __construct($scope = null) {
 		if (!is_null($scope)) $this->scope = $scope;
+		$this->prepare();
+	}
+
+	// prepare the output buffer
+	public function prepare() {
+		$this->inCode = false;
+		$this->buffer = array(array());
+	}
+
+	public function done() {
+		$this->endCode();
+		$out = join($this->buffer[0]);
+		$this->buffer = array(array());
+		return $out;
 	}
 
 	public function pushBuffer() {
@@ -858,13 +939,6 @@ class CompilerX {
 		$this->write($str);
 	}
 
-	public function done() {
-		$this->endCode();
-		$out = join($this->buffer[0]);
-		$this->buffer = array(array());
-		return $out;
-	}
-
 	protected function enterCode() {
 		if ($this->inCode) return;
 		$this->write('<?php ');
@@ -937,21 +1011,23 @@ class Templater {
 	}
 
 	public function render($name, $env) {
-		$src = $this->srcDir.$name.'.tpl';
+		// $src = $this->srcDir.$name.'.tpl';
+		$src = $this->getFile($name);
 		$dest = $this->compileDir.$name.'.tpl.php';
 
 		if (!is_file($dest) || filemtime($src) > filemtime($dest)) {
-			$p = new Parser(new CompilerX('$env'));
+			$p = new Parser(new CompilerX('$env'), $this);
+			// $p->run('hello');
 			file_put_contents($dest, $p->parse(file_get_contents($src)));
 		}
 
 		$this->run($dest, $env);
 	}
 
-	// used by parser to load included files
-	// returns the realpath of the file
-	public function load($name) {
-		
+	// returns the path of the input file
+	public function getFile($sym_name) {
+		$fname = $this->srcDir.$sym_name.'.tpl';
+		if (!is_file($fname)) return false; else return $fname;
 	}
 
 	protected function run($fname, $env) {
