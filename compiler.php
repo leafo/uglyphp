@@ -32,6 +32,8 @@ class Parser {
 
 	private $precedence; // the current file's definition precedence
 
+	public $defaultWrappers = array();
+
 	static public $log = array();
 	static public function log($msg) {
 		self::$log[] = print_r($msg, 1);
@@ -75,7 +77,7 @@ class Parser {
 		if ($fname === false) throw new exception("Failed to find template: $name");
 		$this->precedence = 0;
 
-		$this->to_parse = array($fname);
+		$this->to_parse = array_merge(array($fname), $this->defaultWrappers);
 		while ($file = array_shift($this->to_parse)) {
 			$this->log("running $file");
 			if (!is_file($file)) throw new exception("Failed to find template: $file");
